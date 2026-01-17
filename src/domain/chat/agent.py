@@ -41,7 +41,7 @@ RESPONSE FORMAT:
 You MUST output a single JSON object.
 Examples:
 {"action_type": "retrieve", "query": "search query", "rationale": "reasoning"}
-{"action_type": "answer", "answer": "final response", "rationale": "reasoning", "confidence_score": 0.9}
+{"action_type": "answer", "answer": "final response", "rationale": "reasoning", "citations": ["doc1.pdf"], "confidence_score": 0.9}
 {"action_type": "refuse", "reason": "why refusing", "rationale": "reasoning"}
 """
 

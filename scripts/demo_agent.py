@@ -16,6 +16,15 @@ from src.domain.chat.agent import AgentRouter
 async def main():
     print("\n[START] Starting Agentic RAG Demo (In-Memory)...\n")
     
+    # Clean up registry for demo consistency
+    registry_path = Path("data/registry.db")
+    if registry_path.exists():
+        try:
+            registry_path.unlink()
+            print("[INFO] Cleared existing registry for fresh start.")
+        except Exception as e:
+            print(f"[WARN] Could not clear registry: {e}")
+
     # 1. Setup Shared In-Memory Qdrant
     print("[INFO] Setting up in-memory vector DB...")
     shared_qdrant = QdrantHandler(use_memory=True)
@@ -28,59 +37,34 @@ async def main():
     tools = AgentTools(retriever=retriever)
     agent = AgentRouter(tools=tools)
     
-    # 3. Ingest Dummy Data
-    print("[INFO] Ingesting Knowledge Base...")
+    # 3. Ingest Real Data from data/source_docs
+    source_dir = Path("data/source_docs")
+    print(f"\n[INFO] Ingesting Real Documents from {source_dir}...")
     
-    kb_content = """
-    The Eiffel Tower is located in Paris, France. It was constructed in 1889.
-    The height of Eiffel Tower is 330 meters.
-    
-    Big Ben is the nickname for the Great Bell of the striking clock at the north end of the Palace of Westminster in London.
-    It was completed in 1859.
-    """
-    
-    with tempfile.NamedTemporaryFile(mode='w+', delete=False, suffix=".txt") as tmp:
-        tmp.write(kb_content)
-        tmp_path = Path(tmp.name)
-        
-    try:
-        await ingestor.ingest_file(tmp_path)
-        print("[OK] Ingestion Complete.")
-    finally:
-        if tmp_path.exists():
-            tmp_path.unlink()
-            
-    # 4. Ingest Outdated Data for Testing
-    print("\n[INFO] Ingesting Outdated Policy for Testing Warning...")
-    # We manually inject a doc with is_latest=False into Qdrant to test the Agent's reaction
-    # Since we can't easily force IngestionService to do this (it tries to manage state),
-    # We will just ingest a new file, and then manually patch its payload in Qdrant.
-    
-    outdated_policy = "Policy 99: Students must wear red hats."
-    with tempfile.NamedTemporaryFile(mode='w+', delete=False, suffix=".txt") as tmp:
-        tmp.write(outdated_policy)
-        tmp_path = Path(tmp.name)
-        
-    await ingestor.ingest_file(tmp_path)
-    
-    # Manually patch to make it 'outdated' (is_latest=False)
-    # We need the Qdrant client from the shared handler
-    shared_qdrant.client.set_payload(
-        collection_name="documents",
-        payload={"is_latest": False, "version_number": 1},
-        points=models.Filter(
-            must=[models.FieldCondition(key="content", match=models.MatchValue(value=outdated_policy))]
-        )
-    )
-    if tmp_path.exists():
-        tmp_path.unlink()
+    if not source_dir.exists():
+        print(f"[ERROR] Directory {source_dir} not found!")
+        return
 
-    # 5. Run Agent
+    files = [f for f in source_dir.iterdir() if f.is_file() and f.suffix.lower() in ['.pdf', '.txt', '.docx']]
+    
+    if not files:
+        print("[WARN] No documents found in source directory.")
+    
+    for file_path in files:
+        print(f"   -> Processing: {file_path.name}")
+        await ingestor.ingest_file(file_path)
+    
+    print("[OK] Ingestion Complete.")
+    
+    # Debug: Check extraction
+    count = shared_qdrant.client.count(collection_name="documents")
+    print(f"\n[DEBUG] Total Chunks in DB: {count.count}")
+    
+    # 4. Run Agent with Real Questions
     queries = [
-        "What is the policy on students wearing hats?", # Should warn about outdated
-        "Where is the Eiffel Tower located and how tall is it?",
-        "Tell me about Big Ben.",
-        "What is the capital of Mars?" 
+        "what is STUDY ABROAD PROGRAMME (SAP) in amity?",
+        "Summarize the DISCIPLINARY CONTROL OF STUDENTS IN EXAMINATIONS",
+        "What are the grading system for Very Good to fail"
     ]
     
     for query in queries:

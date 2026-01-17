@@ -38,6 +38,7 @@ class AnswerAction(BaseModel):
     answer: str
     confidence_score: float
     citations: List[str]
+    rationale: str
 
 # Union for polymorphic parsing
 AgentAction = Union[RetrieveAction, SummarizeAction, ClarifyAction, RefuseAction, AnswerAction]

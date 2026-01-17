@@ -1,0 +1,90 @@
+# LEARNING & CONCEPTS NOTEBOOK (learcon.txt)
+# "Agentic Document Intelligence Platform"
+# Purpose: Personal mastery, architectural reasoning, and failure analysis.
+
+==================================================
+1. WHAT IS RAG? (Beyond the Hype)
+==================================================
+Retrieval-Augmented Generation (RAG) is fundamentally about grounding Large Language Models (LLMs) in external, private data.
+Instead of relying on the LLM's frozen training weights for knowledge, we:
+1.  **Retrieve**: Search a vector database for text chunks relevant to the user's query.
+2.  **Augment**: Paste those chunks into the LLM's prompt as "Context".
+3.  **Generate**: Ask the LLM to answer the query *using only* that provided context.
+
+This turns an "Open Book Exam" (LLM memory) into a "Research Task" (reading provided documents).
+
+==================================================
+2. COMMON RAG FAILURE MODES
+==================================================
+Building this project revealed that 90% of RAG is not the LLM, but the data pipeline.
+
+*   **Retrieval Failure**: The correct answer exists in the document, but the vector search didn't find it. This happens because semantic similarity isn't perfect (e.g., "SAP" vs "Study Abroad" overlap).
+*   **Staleness/Drift**: The LLM answers confidently using a document that is 3 years old, unbeknownst to the user.
+*   **Context Window Overload**: Retrieving too much irrelevant noise confuses the model.
+*   **Parsing Loss**: IF you can't read the PDF (tables, headers), you can't verify the answer. (Observed in this project with "Disciplinary Control" tables when OCR was disabled).
+*   **Hallucination**: The LLM tries to be helpful and invents an answer when the retrieval returns nothing useful.
+
+==================================================
+3. AGENTIC DECISION MAKING
+==================================================
+"Agentic" here means the system doesn't just run a linear pipeline (Retrieve -> Answer). It has **Agency** (Choice).
+It evaluates the state and chooses the next action:
+*   "Do I have enough info?" -> Answer.
+*   "Did the search fail?" -> Clarify or Refuse.
+*   "Is the data outdated?" -> Warn.
+
+This separates "Scripted RAG" from "Reasoning RAG".
+
+==================================================
+4. WHY FINITE STATE MACHINES (FSM)?
+==================================================
+Most agent systems use "Chains" (A -> B -> C) or "ReAct Loops" (Think -> Act -> Observe).
+I chose an **Explicit FSM (Finite State Machine)** for control:
+*   **States**: THINKING, RETRIEVING, ANALYZING, REFUSING, ANSWERING.
+*   **Transitions**: Strict rules define how to move between states.
+*   **Reasoning**: It prevents infinite loops and "getting lost" in thought. If the agent enters "REFUSING", it *must* exit.
+
+FSMs make debugging easier. You know exactly what state the agent was in when it failed (e.g., "It got to ANALYZING but failed to generate an AnswerAction").
+
+==================================================
+5. CONFIDENCE-AWARE ANSWERING & REFUSAL
+==================================================
+The most critical feature for a "Trustworthy" system is the ability to say **"I don't know"**.
+*   **Refusal Logic**: Better to refuse a query ("Summarize Disciplinary Control") than to hallucinate a summary from the wrong section (Study Abroad).
+*   **Confidence Score**: The Agent assigns a 0.0-1.0 score. If < 0.5, the Guardrails step in to block the answer.
+*   **Value**: This builds user trust. When the system *does* answer, the user knows it's likely correct.
+
+==================================================
+6. SEMANTIC CHUNKING
+==================================================
+Splitting documents into arbitrary 500-character blocks breaks meaning.
+"Semantic Chunking" attempts to keep related paragraphs together.
+*   **Failure**: If a table spans 3 pages, chunking it by paragraph destroys the row/column relationships.
+*   **Lesson**: Document structure (headers, pages) is often more important than semantic similarity for legal/policy docs.
+
+==================================================
+7. THE ROLE OF OCR (OPTICAL CHARACTER RECOGNITION)
+==================================================
+This project proved that **Text Extraction is the bottleneck**.
+*   When testing with the compiled "Student Handbook 2025" PDF:
+    *   **Without OCR**: The "Disciplinary" section (likely in a table or image-header) was invisible to the parser. The Agent correctly Refused.
+    *   **With OCR**: The parser would "see" the pixels as text, allowing retrieval.
+*   **Lesson**: Embedding models are useless if the Parser returns garbage.
+
+==================================================
+8. REAL HANDBOOK TESTING LESSONS
+==================================================
+Testing with `HANDBOOK 2025.pdf` showed:
+1.  **Ingestion Speed matters**: Large PDFs clog local CPUs. Background workers are mandatory.
+2.  **Versioning is complex**: A file named "Handbook.pdf" changes every year. Tracking `logical_id` (this concept of a handbook) vs `version` (2024 vs 2025) is vital to avoid mixing rules.
+3.  **Agent Behavior**: The Agent correctly identified "SAP" (text-heavy) but refused "Grading" (table-heavy). This verified the "Refusal" mechanism works as intended.
+
+==================================================
+9. WHAT I WOULD DO DIFFERENTLY
+==================================================
+*   **Better Parser**: Invest in a commercial-grade parser (e.g., Unstructured.io or Azure Layout) for tables if this were for production.
+*   **Hybrid Search**: Combine Vector Search (Semantic) with Keyword Search (BM25). "Disciplinary" is a strong keyword that Vector Search might miss if the embeddings are noisy.
+*   **Evaluation Dataset**: Create a "Golden Dataset" of (Question, Answer, GroundTruthChunk) pairs manually before writing code, to measure progress objectively.
+
+==================================================
+This project verified that adding "Agentic" loops improves reliability significantly over naive RAG, primarily by catching failures before they reach the user.

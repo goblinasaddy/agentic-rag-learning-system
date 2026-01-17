@@ -3,12 +3,16 @@ from pathlib import Path
 from typing import Tuple
 
 try:
-    from docling.document_converter import DocumentConverter
+    from docling.document_converter import DocumentConverter, PdfFormatOption
     from docling.datamodel.base_models import InputFormat
+    from docling.datamodel.pipeline_options import PdfPipelineOptions
 except ImportError:
     # Fallback for dev environments where docling might not be installed immediately (heavy dep)
     # In production this should hard fail.
     DocumentConverter = None # type: ignore
+    PdfFormatOption = None # type: ignore
+    PdfPipelineOptions = None # type: ignore
+    InputFormat = None # type: ignore
 
 from src.domain.documents.models import DocumentMetadata
 from src.domain.documents.exceptions import UnsupportedFileTypeError, ParsingError
@@ -22,7 +26,16 @@ class DocumentParser:
 
     def __init__(self):
         if DocumentConverter:
-            self.converter = DocumentConverter()
+            # Configure to disable OCR to prevent memory leaks/crashes on small devices
+            pipeline_options = PdfPipelineOptions()
+            pipeline_options.do_ocr = False
+            pipeline_options.do_table_structure = True # Keep table structure if possible
+            
+            self.converter = DocumentConverter(
+                format_options={
+                    InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)
+                }
+            )
         else:
             self.converter = None
 

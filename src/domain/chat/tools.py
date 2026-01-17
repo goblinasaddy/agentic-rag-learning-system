@@ -11,7 +11,7 @@ class AgentTools:
         Retrieves relevant context for a query. 
         Returns formatted string for LLM consumption.
         """
-        results = await self.retriever.retrieve(query, top_k=3)
+        results = await self.retriever.retrieve(query, top_k=5)
         if not results:
             return "No relevant documents found."
             
